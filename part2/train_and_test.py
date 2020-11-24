@@ -18,7 +18,6 @@ if __name__ == "__main__":
 
     # Create a random environment
     environment = Environment(magnification=500)
-
     # Create an agent
     agent = Agent()
 
@@ -42,12 +41,15 @@ if __name__ == "__main__":
         agent.set_next_state_and_distance(next_state, distance_to_goal)
         # Set what the new state is
         state = next_state
+        #environment.visited_states.append(state.tolist())
         # Optionally, show the environment
         if display_on:
-            environment.show(state)
+            environment.show(state,(154, 145, 172),False)
 
+    environment.show(state,(154, 145, 172),"exploration.png")
     # Test the agent for 100 steps, using its greedy policy
     state = environment.init_state
+    environment.visited_states = []
     has_reached_goal = False
     for step_num in range(100):
         action = agent.get_greedy_action(state)
@@ -58,6 +60,10 @@ if __name__ == "__main__":
             break
         state = next_state
 
+        environment.show(state,(0,0,0),"greedy_policy.png")
+    
+    print(len(environment.visited_states))
+    
     # Print out the result
     if has_reached_goal:
         print('Reached goal in ' + str(step_num) + ' steps.')

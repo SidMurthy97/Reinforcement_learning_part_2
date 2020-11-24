@@ -29,6 +29,8 @@ class Environment:
         self.goal_state = None
         self._define_environment_space()
 
+        self.visited_states = []
+
     # Define environment space
     def _define_environment_space(self):
         # Set the initial state of the agent
@@ -123,8 +125,12 @@ class Environment:
         return next_state, distance_to_goal
 
     # Function to draw the environment and display it on the screen, if required
-    def show(self, agent_state):
+    def show(self, agent_state,color,filename):
         # Create the background / obstacle
+        if agent_state.tolist() not in self.visited_states:
+            self.visited_states.append(agent_state.tolist())
+        
+        
         window_top_left = (0, 0)
         window_bottom_right = (self.magnification * 1, self.magnification * 1)
         cv2.rectangle(self.image, window_top_left, window_bottom_right, (50, 50, 50), thickness=cv2.FILLED)
@@ -133,6 +139,15 @@ class Environment:
             top_left = (int(self.magnification * block[0][0]), int(self.magnification * (1 - block[0][1])))
             bottom_right = (int(self.magnification * block[1][0]), int(self.magnification * (1 - block[1][1])))
             cv2.rectangle(self.image, top_left, bottom_right, (246, 238, 229), thickness=cv2.FILLED)
+        
+        #trace previous paths
+        for prev_state in self.visited_states:
+            agent_centre = (int(prev_state[0] * self.magnification), int((1 - prev_state[1]) * self.magnification))
+            agent_radius = int(0.005 * self.magnification)
+            agent_colour = color
+            cv2.circle(self.image, agent_centre, agent_radius, agent_colour, cv2.FILLED)
+        
+        
         # Draw the agent
         agent_centre = (int(agent_state[0] * self.magnification), int((1 - agent_state[1]) * self.magnification))
         agent_radius = int(0.01 * self.magnification)
@@ -145,5 +160,8 @@ class Environment:
         cv2.circle(self.image, goal_centre, goal_radius, goal_colour, cv2.FILLED)
         # Show the image
         cv2.imshow("Environment", self.image)
+        
+        if filename != False:
+            cv2.imwrite(filename,self.image)
         # This line is necessary to give time for the image to be rendered on the screen
         cv2.waitKey(1)
