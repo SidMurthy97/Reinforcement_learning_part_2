@@ -136,6 +136,7 @@ class Agent:
         
         #add transition to replay buffer
         self.replay_buffer.add_transition(transition)
+        
         #once the buffer has enough transitinos in it, we can start to sample the buffer to create a minibatch to train with 
         if len(self.replay_buffer.buffer) > self.replay_buffer.minibatch_length:
             
@@ -145,6 +146,7 @@ class Agent:
             #losses.append(loss)
             # Sleep, so that you can observe the agent moving. Note: this line should be removed when you want to speed up training
             #time.sleep(0.2)
+        
 
     # Function to get the greedy action for a particular state
     def get_greedy_action(self, state):
@@ -247,11 +249,31 @@ class ReplayBuffer():
     
     def __init__(self):
         self.buffer = deque(maxlen=1000000)
-        self.minibatch_length = 150
-
+        self.minibatch_length = 2
+        self.weights = []
+        self.p = []
+        self.alpha = 0
+    
     def add_transition(self,transition):
         self.buffer.append(transition)
+        #add the max weights to the list, or add 1 if its empty 
+        self.weights.append(max(self.weights)) if len(self.weights) > 0 else self.weights.append(1)
+        self.update_p()
     
     def get_minibatch(self):
-        minibatch = random.sample(self.buffer,self.minibatch_length)
+        #minibatch = random.sample(self.buffer,self.minibatch_length)
+        
+        #print(len(self.buffer),len(self.p))
+        minibatch = random.choices(self.buffer,weights = self.p,k = self.minibatch_length)    
+        
         return minibatch
+
+    def update_p(self):
+        #make p an empty list of the same length as weights 
+        self.p = []*len(self.weights)
+
+        #calculate all p 
+        for i in range(len(self.buffer)):
+            normalised_probability = self.weights[i]/sum(self.weights)
+            self.p.append(normalised_probability)
+        print(self.p)

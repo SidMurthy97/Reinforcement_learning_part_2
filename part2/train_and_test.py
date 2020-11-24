@@ -26,7 +26,7 @@ if __name__ == "__main__":
 
     # Determine the time at which training will stop, i.e. in 10 minutes (600 seconds) time
     start_time = time.time()
-    end_time = start_time + 600
+    end_time = start_time + 15
 
     # Train the agent, until the time is up
     while time.time() < end_time:
