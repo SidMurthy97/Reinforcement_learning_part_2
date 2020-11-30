@@ -26,7 +26,7 @@ class Agent:
         self.reset()
 
         #epsilon
-        self.epsilon = 1
+        self.epsilon = 0
 
         #epsilon decay rate
         self.edr = 0.9999
@@ -149,6 +149,7 @@ class DQN:
     # Function to calculate the loss for a particular transition.
     def _calculate_loss(self, minibatch):
         
+        DoubleQ = False 
         #split minibatch into 4 arrays
         state,action,reward,next_state = zip(*minibatch)
 
@@ -160,12 +161,22 @@ class DQN:
         
         #get predicted rewards for the 4 directions 
         network_prediction_R = self.q_network.forward(state_tensor)
-        
-        #predict the 4 rewards for differnt directions from the next state 
-        network_prediction_NS = self.target_network.forward(next_state_tensor)
-        max_predicted_q_values = network_prediction_NS.max(1)[0].detach()
 
+        if not DoubleQ: 
+            #FOR SINGLE DEEP Q LEARNING UNCOMMENT THIS         
+            #predict the 4 rewards for differnt directions from the next state 
+            network_prediction_NS = self.target_network.forward(next_state_tensor).detach()
+            max_predicted_q_values = network_prediction_NS.max(1)[0]
+        else:
+            #FOR DOUBLE DEEP Q LEARNING
+            #get prediction
+            network_prediction_NS = self.q_network.forward(next_state_tensor)
+            #get max q value index based on the target network 
+            max_q_value_indices = self.target_network.forward(next_state_tensor).detach().argmax(1)
+            max_predicted_q_values = network_prediction_NS.gather(1,max_q_value_indices.unsqueeze(1)).squeeze(1)
+        
         actual_return = reward_tensor + 0.9*max_predicted_q_values
+
 
         #get predicted reward in the chosen direction
         predicted_reward = network_prediction_R.gather(1,action_tensor.unsqueeze(1)).squeeze(1)
@@ -178,6 +189,7 @@ class DQN:
         self.target_network.load_state_dict(self.q_network.state_dict())
 
     def get_optimal_policy(self):
+        
         optimal_q_values = np.zeros([10,10])
         all_q_values = np.zeros([10,10,4])
         for x,i in enumerate(np.arange(0.05,1,0.1)):
@@ -211,7 +223,7 @@ if __name__ == "__main__":
     # Create an environment.
     # If display is True, then the environment will be displayed after every agent step. This can be set to False to speed up training time. The evaluation in part 2 of the coursework will be done based on the time with display=False.
     # Magnification determines how big the window will be when displaying the environment on your monitor. For desktop monitors, a value of 1000 should be about right. For laptops, a value of 500 should be about right. Note that this value does not affect the underlying state space or the learning, just the visualisation of the environment.
-    environment = Environment(display=False, magnification=500)
+    environment = Environment(display=True, magnification=500)
     # Create an agent
     agent = Agent(environment)
     
@@ -219,7 +231,7 @@ if __name__ == "__main__":
     n_episodes = 100
     n_steps = 100
     minibatch_length = 100
-    target_network_update_rate = 1
+    target_network_update_rate = 10
     losses = []
 
     loss_per_episode = []
@@ -259,9 +271,9 @@ if __name__ == "__main__":
     #now that training is complete, we need to get the optimal policy
     policy,q_values = agent.dqn.get_optimal_policy()
     
-    environment.draw_policy(policy,100)
-    visualiser = QValueVisualiser(environment=environment, magnification=500)
-    visualiser.draw_q_values(q_values)
+    environment.draw_policy(policy,20)
+    # visualiser = QValueVisualiser(environment=environment, magnification=500)
+    # visualiser.draw_q_values(q_values)
     pprint.pprint(policy)
     plt.plot(loss_per_episode)
     plt.yscale('log')

@@ -1,6 +1,6 @@
 import time
 import numpy as np
-
+import matplotlib.pyplot as plt
 from random_environment import Environment
 from agent import Agent
 
@@ -11,11 +11,13 @@ if __name__ == "__main__":
     # This determines whether the environment will be displayed on each each step.
     # When we train your code for the 10 minute period, we will not display the environment.
     display_on = True
-
     # Create a random seed, which will define the environment
     random_seed = int(time.time())
+    #hard: 1606325173, 1606347713
+    #medium: 1606591716
+    #easy 1606591105
     np.random.seed(random_seed)
-
+    print(random_seed)
     # Create a random environment
     environment = Environment(magnification=500)
     # Create an agent
@@ -26,7 +28,7 @@ if __name__ == "__main__":
 
     # Determine the time at which training will stop, i.e. in 10 minutes (600 seconds) time
     start_time = time.time()
-    end_time = start_time + 15
+    end_time = start_time + 660
 
     # Train the agent, until the time is up
     while time.time() < end_time:
@@ -46,6 +48,8 @@ if __name__ == "__main__":
         if display_on:
             environment.show(state,(154, 145, 172),False)
 
+    # plt.plot(agent.mean_losses)
+    # plt.yscale('log')
     environment.show(state,(154, 145, 172),"exploration.png")
     # Test the agent for 100 steps, using its greedy policy
     state = environment.init_state
@@ -69,3 +73,5 @@ if __name__ == "__main__":
         print('Reached goal in ' + str(step_num) + ' steps.')
     else:
         print('Did not reach goal. Final distance = ' + str(distance_to_goal))
+
+    plt.show()

@@ -19,17 +19,17 @@ import numpy as np
 import torch
 import time
 import random
-#from tqdm import trange
+
 import matplotlib.pyplot as plt
-# Import the environment module
+
 from collections import deque 
-#import pprint
+
 class Agent:
 
     # Function to initialise the agent
     def __init__(self):
         # Set the episode length
-        self.episode_length = 500
+        self.episode_length = 450
         # Reset the total number of steps which the agent has taken
         self.num_steps_taken = 0
         # The state variable stores the latest state of the agent in the environment
@@ -37,32 +37,42 @@ class Agent:
         # The action variable stores the latest action which the agent has applied to the environment
         self.action = None
 
-        #define replay buffer object
-        self.replay_buffer = ReplayBuffer()
-
+        self.episode_number =0
         #define DQN object
         self.dqn = DQN()
 
-        #set an exploration parameter and decay parameter
+        #Epsilon burst determines whether we want to increase the epsilon for the second part of an episode to do more exploring
+        self.epsilon_burst = False
         self.epsilon = 1
-        self.edr = 0.99
+        self.late_state_epsilon = 0.9
+        self.edr = 0.98
+
         #make reward a class variable 
         self.distance_to_goal = 1
 
         #target network update rate
         self.target_update_rate = 20
+        self.time = time.time()
+
+        self.losses = []
+        self.mean_losses = []
 
     # Function to check whether the agent has reached the end of an episode
     def has_finished_episode(self):
         #if episode has ended 
         if self.num_steps_taken % self.episode_length == 0:
+            #diff = time.time() - self.time 
+            #self.time = time.time()
+            self.episode_number = self.num_steps_taken/self.episode_length
+            #print(("e: {:.2f} lse: {:.2f} ep: {} d: {} t = {:.2f}").format(self.epsilon,self.late_state_epsilon,self.episode_number,self.distance_to_goal,diff))
             
-            episode_number = self.num_steps_taken/self.episode_length
-            print("epsilon at end of episode: ",self.epsilon, "epsisode number ",episode_number,"distance to goal : ",self.distance_to_goal)
+            # self.mean_losses.append(np.mean(self.losses))
+            # self.losses = []
             
             #self.epsilon = min(1,(self.epsilon + (1/max(1,episode_number))*(self.distance_to_goal - self.epsilon)))
-            self.epsilon = self.epsilon*self.edr
-            
+            self.epsilon = max(0.1,self.epsilon*self.edr)
+            # if self.episode_number == 70:
+            #     self.dqn.replay_buffer.prioritise = True
             return True
         else:
             return False
@@ -87,26 +97,31 @@ class Agent:
     
     # Function for the agent to choose its next action
     def _choose_next_action(self):
-        # Return discrete action 0
+
         #the best next action is the one which gives us the best reward
         q_values = self.dqn.q_network.forward(torch.tensor(self.state))
-        max_q_index = q_values.max(0)[1]
+        max_q_index = q_values.max(0)[1] 
+       
+        #if we are more than 60% into the episode and over 25 episodes, make epsilon slightly higher           
+        if self.epsilon_burst and self.num_steps_taken - (self.episode_length*self.episode_number) > self.episode_length*0.6 and self.episode_number > 25:
+            #make the agent explore more in the second half of the episode 
+            self.late_state_epsilon= self.late_state_epsilon*0.9995
+             #make a probability distribution 
+            epsilon_pd = [self.late_state_epsilon/4,self.late_state_epsilon/4,self.late_state_epsilon/4,self.late_state_epsilon/4]
+            epsilon_pd[max_q_index] = 1 - self.late_state_epsilon + self.late_state_epsilon/4       
+            #print("epsilon change to:",epsilon)
+        else:
+            #make a probability distribution 
+            epsilon_pd = [self.epsilon/4,self.epsilon/4,self.epsilon/4,self.epsilon/4]
+            epsilon_pd[max_q_index] = 1 - self.epsilon + self.epsilon/4
 
-        #epsilon is already being set at the end fo each epsiode
-        #wha if we randomly set epsilon higher again, lets say 1% of times         
-        #make a probability distribution 
-        epsilon_pd = [self.epsilon/4,self.epsilon/4,self.epsilon/4,self.epsilon/4]
-        epsilon_pd[max_q_index] = 1 - self.epsilon + self.epsilon/4
-
-
+        #choose the actual action based on epsilon
         action = random.choices([0,1,2,3],weights=epsilon_pd)
-        #action = random.randint(0,3)
+
         return action[0]
-    # Function to get the next action, using whatever method you like
+
     
     def get_next_action(self, state):
-        # Here, the action is random, but you can change this
-        #action = np.random.uniform(low=-0.01, high=0.01, size=2).astype(np.float32)
         # Update the number of steps which the agent has taken
         self.num_steps_taken += 1
         # Store the state; this will be used later, when storing the transition
@@ -123,11 +138,14 @@ class Agent:
     def set_next_state_and_distance(self, next_state, distance_to_goal):
         # Convert the distance to a reward
         self.distance_to_goal = distance_to_goal
+        
+        #assign a slightly lower reward to the wall
         if self.state.tolist() != next_state.tolist():
             reward = 1 - self.distance_to_goal
         else:
-            reward = 0.3*(1 - self.distance_to_goal)
+            reward = 0.8*(1 - self.distance_to_goal)
 
+    #update target network 
         if self.num_steps_taken%self.target_update_rate == 0:
             self.dqn.update_target_network()
         
@@ -135,18 +153,18 @@ class Agent:
         transition = (self.state, self.action, reward, next_state)
         
         #add transition to replay buffer
-        self.replay_buffer.add_transition(transition)
+        self.dqn.replay_buffer.add_transition(transition)
         
         #once the buffer has enough transitinos in it, we can start to sample the buffer to create a minibatch to train with 
-        if len(self.replay_buffer.buffer) > self.replay_buffer.minibatch_length:
+        if len(self.dqn.replay_buffer.buffer) > self.dqn.replay_buffer.minibatch_length:
             
-            minibatch = self.replay_buffer.get_minibatch()
+            minibatch = self.dqn.replay_buffer.get_minibatch()
             #calculate loss 
             loss = self.dqn.train_q_network(minibatch)
-            #losses.append(loss)
-            # Sleep, so that you can observe the agent moving. Note: this line should be removed when you want to speed up training
-            #time.sleep(0.2)
-        
+            #self.losses.append(loss)
+
+        #update probabilities in the prioritised replay buffer
+        self.dqn.replay_buffer.update_p()
 
     # Function to get the greedy action for a particular state
     def get_greedy_action(self, state):
@@ -185,6 +203,12 @@ class DQN:
         # Define the optimiser which is used when updating the Q-network. The learning rate determines how big each gradient step is during backpropagation.
         self.optimiser = torch.optim.Adam(self.q_network.parameters(), lr=0.001)
 
+        #define replay buffer object
+        self.replay_buffer = ReplayBuffer()
+
+        #set if yolu want double q learning or not 
+        self.DoubleQ = True 
+
     # Function that is called whenever we want to train the Q-network. Each call to this function takes in a transition tuple containing the data we use to update the Q-network.
     def train_q_network(self, minibatch):
         # Set all the gradients stored in the optimiser to zero.
@@ -209,18 +233,31 @@ class DQN:
         action_tensor = torch.tensor(action)
         reward_tensor = torch.tensor(reward)
         next_state_tensor = torch.tensor(next_state)
-        
+
         #get predicted rewards for the 4 directions 
         network_prediction_R = self.q_network.forward(state_tensor)
-        
-        #predict the 4 rewards for differnt directions from the next state 
-        network_prediction_NS = self.target_network.forward(next_state_tensor)
-        max_predicted_q_values = network_prediction_NS.max(1)[0].detach()
+
+        #two cases depending on if double Q learning is enabled 
+        if not self.DoubleQ:       
+            #predict the 4 rewards for differnt directions from the next state 
+            network_prediction_NS = self.target_network.forward(next_state_tensor)
+            max_predicted_q_values = network_prediction_NS.max(1)[0].detach()
+        else:
+  
+            #get prediction
+            network_prediction_NS = self.q_network.forward(next_state_tensor)
+            
+            #get max q value index based on the target network 
+            max_q_value_indices = self.target_network.forward(next_state_tensor).detach().argmax(1)
+            max_predicted_q_values = network_prediction_NS.gather(1,max_q_value_indices.unsqueeze(1)).squeeze(1)
 
         actual_return = reward_tensor + 0.9*max_predicted_q_values
 
         #get predicted reward in the chosen direction
         predicted_reward = network_prediction_R.gather(1,action_tensor.unsqueeze(1)).squeeze(1)
+
+        err = abs(predicted_reward - actual_return).detach().numpy()
+        self.replay_buffer.update_weights(err)
 
         loss = torch.nn.MSELoss()(predicted_reward,actual_return.float())
 
@@ -229,51 +266,61 @@ class DQN:
     def update_target_network(self):
         self.target_network.load_state_dict(self.q_network.state_dict())
 
-    def get_optimal_policy(self):
-        optimal_q_values = np.zeros([10,10])
-        all_q_values = np.zeros([10,10,4])
-        for x,i in enumerate(np.arange(0.05,1,0.1)):
-            
-            for y,j in enumerate(np.arange(0.05,1,0.1)):
-                y = 9-y  
-                state = np.array([i,j], dtype=np.float32)
-
-                network_prediction = self.q_network.forward(torch.tensor(state))
-                all_q_values[y][x] = network_prediction.detach().numpy()
-                #print(all_q_values,all_q_values.max(0)[1])
-                optimal_q_values[y][x] = network_prediction.max(0)[1]
-
-        return optimal_q_values,all_q_values
-
 class ReplayBuffer():
     
-    def __init__(self):
-        self.buffer = deque(maxlen=1000000)
-        self.minibatch_length = 2
-        self.weights = []
+
+    def __init__(self ):
+        
+        self.buffer = deque(maxlen=7000)
+        self.minibatch_length = 150
+        self.minibatch_indices = []
+        self.weights = deque(maxlen=7000)
         self.p = []
-        self.alpha = 0
-    
+        self.alpha = 0.7
+        self.probability_constant = 0.001
+        self.prioritise =  True
+        self.count = 0
     def add_transition(self,transition):
         self.buffer.append(transition)
         #add the max weights to the list, or add 1 if its empty 
         self.weights.append(max(self.weights)) if len(self.weights) > 0 else self.weights.append(1)
-        self.update_p()
     
     def get_minibatch(self):
-        #minibatch = random.sample(self.buffer,self.minibatch_length)
-        
-        #print(len(self.buffer),len(self.p))
-        minibatch = random.choices(self.buffer,weights = self.p,k = self.minibatch_length)    
-        
+
+        minibatch = []
+        #if prioritised replay is set to true 
+        if self.prioritise:
+            #tackling edge cases for sampling indices 
+            if len(self.buffer) <=7000 and self.count == 0:
+                indices_range = range(len(self.buffer)-1) 
+                if(len(self.buffer)) == 7000:
+                    self.count += 1
+            else:
+                indices_range = range(7000)
+
+            #choose random indices 
+            self.minibatch_indices = random.choices(indices_range,weights = self.p,k = self.minibatch_length)    
+
+            #make the minibatch 
+            for i in self.minibatch_indices:
+                minibatch.append(self.buffer[i])
+
+        else:
+            minibatch = random.sample(self.buffer,self.minibatch_length)
         return minibatch
+
+
+    def update_weights(self,errors):
+        self.probability_constant = 0.05*max(errors)
+        for x,i in enumerate(self.minibatch_indices):
+            self.weights[i] = errors[x] + self.probability_constant
+
 
     def update_p(self):
         #make p an empty list of the same length as weights 
-        self.p = []*len(self.weights)
-
-        #calculate all p 
-        for i in range(len(self.buffer)):
-            normalised_probability = self.weights[i]/sum(self.weights)
-            self.p.append(normalised_probability)
-        print(self.p)
+        if self.prioritise:
+            self.p = np.zeros(len(self.weights))
+            sum_weights = sum(np.array(self.weights)**self.alpha)
+            self.p = (np.array(self.weights)**self.alpha)/sum_weights
+        else: 
+            self.p = np.zeros(len(self.weights))
